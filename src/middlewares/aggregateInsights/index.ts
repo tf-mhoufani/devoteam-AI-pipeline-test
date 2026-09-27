@@ -1,0 +1,1 @@
+export { aggregateInsights } from "./aggregateInsights";

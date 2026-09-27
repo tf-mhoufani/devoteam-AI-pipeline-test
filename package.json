@@ -1,0 +1,45 @@
+{
+  "name": "devoteam-ai-pipeline-test",
+  "version": "1.0.0",
+  "description": "make AI recommentations from json data ",
+  "type": "module",
+  "main": "./src/index.ts",
+  "scripts": {
+    "start": "npm run analyze-logs -- --input ./data/rapport.json --output ./report/output.json",
+    "analyze-logs": "tsx --env-file=.env src/scripts/logAnalyzer.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tf-mhoufani/devoteam-AI-pipeline-test.git"
+  },
+  "author": "mehdi houfani",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/tf-mhoufani/devoteam-AI-pipeline-test/issues"
+  },
+  "homepage": "https://github.com/tf-mhoufani/devoteam-AI-pipeline-test#readme",
+  "dependencies": {
+    "openai": "^7.23.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^26.6.3",
+    "@vitest/coverage-v8": "^5.0.2",
+    "eslint": "^10.11.0",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.9.9",
+    "tsx": "^4.23.15",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.70.1",
+    "vitest": "^5.0.2"
+  },
+  "imports": {
+    "#types/*": "./src/types/*.ts",
+    "#middlewares/*": "./src/middlewares/*/index.ts",
+    "#helpers/*": "./src/helpers/*.ts"
+  }
+}
