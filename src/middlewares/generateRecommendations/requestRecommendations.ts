@@ -1,3 +1,4 @@
+import { consoleLogger, type Logger } from "#helpers/logger";
 import type { Recommendation } from "#types/schema";
 import {
   requestGroqWithRetry,
@@ -16,6 +17,7 @@ export type { GroqChatPrompt as GroqPrompts };
  */
 export const requestRecommendations = (
   prompts: GroqChatPrompt,
+  logger: Logger = consoleLogger,
 ): Promise<Recommendation[]> =>
   requestGroqWithRetry({
     ...prompts,
@@ -25,6 +27,6 @@ export const requestRecommendations = (
     parse: parseRecommendations,
     // recoverFailedGeneration is used to recover from a failed generation.
     recoverFailedGeneration: recoverGroqFailedGeneration,
-    // onSkip is used to skip the request.
     onSkip: () => [],
+    logger,
   });

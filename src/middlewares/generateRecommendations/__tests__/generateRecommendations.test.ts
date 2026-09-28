@@ -304,21 +304,21 @@ describe("generateRecommendations", () => {
     ]);
     expect(sent.every((group) => group.examples.length === 2)).toBe(true);
     expect(create.mock.calls[3]?.[0].messages[0].content).toContain(
-      "Deduplicate and rank",
+      "Merge draft recommendations",
     );
     expect(result.recommendations).toEqual([
       recommendation("REC-001"),
       recommendation("REC-002"),
     ]);
     expect(log.mock.calls.map(([message]) => message)).toEqual([
-      "🤖 Groq group 1/3 (error_rate, 8 peaks)...",
-      "   ✓ 1 recommendations (1 total)",
-      "🤖 Groq group 2/3 (latency_ms, 4 peaks)...",
-      "   ✓ 1 recommendations (2 total)",
-      "🤖 Groq group 3/3 (cpu_usage, 3 peaks)...",
-      "   ✓ 1 recommendations (3 total)",
-      "🤖 Groq synthesis (3 recommendations → filter & rank)...",
-      "   ✓ 2 recommendations",
+      "Groq batch 1/3 (error_rate, 8 peaks)...",
+      "1 recommendation(s) (1 total)",
+      "Groq batch 2/3 (latency_ms, 4 peaks)...",
+      "1 recommendation(s) (2 total)",
+      "Groq batch 3/3 (cpu_usage, 3 peaks)...",
+      "1 recommendation(s) (3 total)",
+      "Groq synthesis (3 recommendations → filter and rank)...",
+      "2 recommendation(s) after synthesis",
     ]);
   });
 
@@ -378,12 +378,12 @@ describe("generateRecommendations", () => {
       recommendation("REC-002"),
     ]);
     expect(log.mock.calls.map(([message]) => message)).toEqual([
-      "🤖 Groq group 1/2 (cpu_usage, 1 peaks)...",
-      "   ✓ 1 recommendations (1 total)",
-      "🤖 Groq group 2/2 (service_status: degraded api_gateway, cache; offline database)...",
-      "   ✓ 1 recommendations (2 total)",
-      "🤖 Groq synthesis (2 recommendations → filter & rank)...",
-      "   ✓ 2 recommendations",
+      "Groq batch 1/2 (cpu_usage, 1 peaks)...",
+      "1 recommendation(s) (1 total)",
+      "Groq batch 2/2 (service_status: degraded api_gateway, cache; offline database)...",
+      "1 recommendation(s) (2 total)",
+      "Groq synthesis (2 recommendations → filter and rank)...",
+      "2 recommendation(s) after synthesis",
     ]);
   });
 
@@ -406,8 +406,8 @@ describe("generateRecommendations", () => {
     expect(create).toHaveBeenCalledTimes(1);
     expect(result.recommendations).toEqual([recommendation("REC-001")]);
     expect(log.mock.calls.map(([message]) => message)).toEqual([
-      "🤖 Groq group 1/1 (service_status: degraded none; offline database)...",
-      "   ✓ 1 recommendations (1 total)",
+      "Groq batch 1/1 (service_status: degraded none; offline database)...",
+      "1 recommendation(s) (1 total)",
     ]);
   });
 
@@ -716,6 +716,238 @@ describe("generateRecommendations", () => {
     },
   );
 
+  it("still groups isolated anomalies by metric when their timestamp is not clustered", async () => {
+    create.mockResolvedValue({
+      choices: [
+        { message: { content: JSON.stringify(groqPayload("REC-001")) } },
+      ],
+    });
+
+    await generateRecommendations({
+      anomalies: [
+        {
+          metric: "cpu_usage",
+          value: 98,
+          threshold: 95,
+          severity: "high",
+          timestamp: "2023-10-01T12:00:00Z",
+          description: "CPU",
+        },
+        {
+          metric: "latency_ms",
+          value: 360,
+          threshold: 250,
+          severity: "high",
+          timestamp: "2023-10-01T12:00:00Z",
+          description: "Latency",
+        },
+        {
+          metric: "error_rate",
+          value: 0.08,
+          threshold: 0.05,
+          severity: "high",
+          timestamp: "2023-10-01T19:30:00Z",
+          description: "Errors",
+        },
+      ],
+      incident_clusters: [
+        {
+          id: "CLU-001",
+          type: "co_occurrence",
+          metrics: ["cpu_usage", "latency_ms"],
+          timestamps: ["2023-10-01T12:00:00Z"],
+          severity: "high",
+          log_count: 1,
+          description: "combined spike",
+        },
+      ],
+    });
+
+    const metricGroupCalls = create.mock.calls.filter(([payload]) =>
+      payload.messages[1].content.includes("Anomaly group"),
+    );
+
+    expect(metricGroupCalls).toHaveLength(1);
+    expect(metricGroupCalls[0]?.[0].messages[1].content).toContain(
+      "error_rate",
+    );
+  });
+
+  it("does not expose incident_clusters on the returned state", async () => {
+    create.mockResolvedValue({
+      choices: [
+        { message: { content: JSON.stringify(groqPayload("REC-001")) } },
+      ],
+    });
+
+    const result = await generateRecommendations({
+      anomalies: [
+        {
+          metric: "cpu_usage",
+          value: 98,
+          threshold: 95,
+          severity: "high",
+          timestamp: "2023-10-01T12:00:00Z",
+          description: "CPU",
+        },
+      ],
+      incident_clusters: [
+        {
+          id: "CLU-001",
+          type: "co_occurrence",
+          metrics: ["cpu_usage"],
+          timestamps: ["2023-10-01T12:00:00Z"],
+          severity: "high",
+          log_count: 1,
+          description: "cpu spike",
+        },
+      ],
+    });
+
+    expect(result.incident_clusters).toBeUndefined();
+  });
+
+  it("uses incident cluster jobs and skips correlated metric groups", async () => {
+    create.mockResolvedValue({
+      choices: [
+        { message: { content: JSON.stringify(groqPayload("REC-001")) } },
+      ],
+    });
+
+    await generateRecommendations({
+      anomalies: [
+        {
+          metric: "cpu_usage",
+          value: 98,
+          threshold: 95,
+          severity: "high",
+          timestamp: "2023-10-01T12:00:00Z",
+          description: "CPU",
+        },
+        {
+          metric: "latency_ms",
+          value: 360,
+          threshold: 250,
+          severity: "high",
+          timestamp: "2023-10-01T12:00:00Z",
+          description: "Latency",
+        },
+        {
+          metric: "memory_usage",
+          value: 91,
+          threshold: 90,
+          severity: "high",
+          timestamp: "2023-10-01T13:00:00Z",
+          description: "Memory",
+        },
+      ],
+      incident_clusters: [
+        {
+          id: "CLU-001",
+          type: "co_occurrence",
+          metrics: ["cpu_usage", "latency_ms"],
+          timestamps: ["2023-10-01T12:00:00Z"],
+          severity: "high",
+          log_count: 1,
+          description: "combined spike",
+        },
+        {
+          id: "CLU-002",
+          type: "temporal_cascade",
+          metrics: ["latency_ms", "error_rate"],
+          timestamps: [],
+          severity: "high",
+          log_count: 0,
+          description: "empty cascade",
+        },
+      ],
+    });
+
+    expect(create).toHaveBeenCalledTimes(3);
+    expect(create.mock.calls[0]?.[0].messages[0].content).toContain(
+      "CORRELATED incident cluster",
+    );
+    expect(create.mock.calls[0]?.[0].messages[1].content).toContain(
+      "Incident cluster",
+    );
+    expect(create.mock.calls[1]?.[0].messages[1].content).toContain(
+      "memory_usage",
+    );
+    expect(create.mock.calls[2]?.[0].messages[1].content).toContain(
+      "Draft recommendations",
+    );
+  });
+
+  it("skips latency and error rate metric jobs when a temporal cascade exists", async () => {
+    create.mockResolvedValue({
+      choices: [
+        { message: { content: JSON.stringify(groqPayload("REC-001")) } },
+      ],
+    });
+
+    await generateRecommendations({
+      anomalies: [
+        {
+          metric: "latency_ms",
+          value: 360,
+          threshold: 250,
+          severity: "high",
+          timestamp: "2023-10-01T12:00:00Z",
+          description: "Latency",
+        },
+        {
+          metric: "error_rate",
+          value: 0.08,
+          threshold: 0.05,
+          severity: "high",
+          timestamp: "2023-10-01T13:00:00Z",
+          description: "Errors",
+        },
+        {
+          metric: "cpu_usage",
+          value: 98,
+          threshold: 95,
+          severity: "high",
+          timestamp: "2023-10-01T14:00:00Z",
+          description: "CPU",
+        },
+      ],
+      incident_clusters: [
+        {
+          id: "CLU-001",
+          type: "temporal_cascade",
+          metrics: ["latency_ms", "error_rate"],
+          timestamps: [
+            "2023-10-01T12:00:00Z",
+            "2023-10-01T13:00:00Z",
+          ],
+          severity: "high",
+          log_count: 1,
+          description: "cascade",
+        },
+      ],
+    });
+
+    expect(create).toHaveBeenCalledTimes(3);
+    expect(create.mock.calls[0]?.[0].messages[1].content).toContain(
+      "Incident cluster",
+    );
+    expect(create.mock.calls[1]?.[0].messages[1].content).toContain(
+      "cpu_usage",
+    );
+    const metricGroupCalls = create.mock.calls.filter(([payload]) =>
+      payload.messages[1].content.includes("Anomaly group"),
+    );
+
+    expect(metricGroupCalls).toHaveLength(1);
+    expect(metricGroupCalls[0]?.[0].messages[1].content).toContain("cpu_usage");
+    expect(
+      metricGroupCalls.some(([payload]) =>
+        payload.messages[1].content.includes("latency_ms"),
+      ),
+    ).toBe(false);
+  });
+
   it("throws when Groq returns an empty body", async () => {
     create.mockResolvedValue({ choices: [{ message: { content: null } }] });
 
@@ -727,10 +959,11 @@ describe("generateRecommendations", () => {
             value: 98,
             threshold: 95,
             severity: "high",
+            timestamp: "2023-10-01T12:00:00Z",
             description: "CPU",
           },
         ],
       }),
-    ).rejects.toThrow("Échec de la génération Groq");
+    ).rejects.toThrow("Groq generation failed");
   });
 });

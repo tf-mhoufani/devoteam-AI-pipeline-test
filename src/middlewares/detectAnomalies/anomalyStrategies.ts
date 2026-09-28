@@ -31,6 +31,7 @@ const toAnomaly = (
   value,
   threshold: band.threshold,
   severity: band.severity,
+  timestamp: log.timestamp,
   description: band.description(log),
 });
 
@@ -107,8 +108,80 @@ export const errorRateStrategy = createThresholdStrategy(
   errorRateBands,
 );
 
+const memoryBands: SeverityBand[] = [
+  {
+    min: THRESHOLDS.memoryCritical,
+    threshold: THRESHOLDS.memoryCritical,
+    severity: SeveritySchema.enum.high,
+    description: (log) =>
+      `Critical memory pressure (${log.memory_usage}%) recorded at ${log.timestamp}`,
+  },
+  {
+    min: THRESHOLDS.memoryHigh,
+    threshold: THRESHOLDS.memoryHigh,
+    severity: SeveritySchema.enum.medium,
+    description: (log) =>
+      `High memory usage (${log.memory_usage}%) recorded at ${log.timestamp}`,
+  },
+];
+
+const diskBands: SeverityBand[] = [
+  {
+    min: THRESHOLDS.diskCritical,
+    threshold: THRESHOLDS.diskCritical,
+    severity: SeveritySchema.enum.high,
+    description: (log) =>
+      `Critical disk usage (${log.disk_usage}%) recorded at ${log.timestamp}`,
+  },
+  {
+    min: THRESHOLDS.diskHigh,
+    threshold: THRESHOLDS.diskHigh,
+    severity: SeveritySchema.enum.medium,
+    description: (log) =>
+      `High disk usage (${log.disk_usage}%) recorded at ${log.timestamp}`,
+  },
+];
+
+const temperatureBands: SeverityBand[] = [
+  {
+    min: THRESHOLDS.temperatureCritical,
+    threshold: THRESHOLDS.temperatureCritical,
+    severity: SeveritySchema.enum.high,
+    description: (log) =>
+      `Critical temperature (${log.temperature_celsius}°C) recorded at ${log.timestamp}`,
+  },
+  {
+    min: THRESHOLDS.temperatureHigh,
+    threshold: THRESHOLDS.temperatureHigh,
+    severity: SeveritySchema.enum.medium,
+    description: (log) =>
+      `High temperature (${log.temperature_celsius}°C) recorded at ${log.timestamp}`,
+  },
+];
+
+export const memoryPressureStrategy = createThresholdStrategy(
+  "memory_usage",
+  (log) => log.memory_usage,
+  memoryBands,
+);
+
+export const diskUsageStrategy = createThresholdStrategy(
+  "disk_usage",
+  (log) => log.disk_usage,
+  diskBands,
+);
+
+export const temperatureStrategy = createThresholdStrategy(
+  "temperature_celsius",
+  (log) => log.temperature_celsius,
+  temperatureBands,
+);
+
 export const ANOMALY_STRATEGIES: AnomalyStrategy[] = [
   cpuOverloadStrategy,
   latencyDegradationStrategy,
   errorRateStrategy,
+  memoryPressureStrategy,
+  diskUsageStrategy,
+  temperatureStrategy,
 ];

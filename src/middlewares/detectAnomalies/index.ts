@@ -1,1 +1,1 @@
-export { detectAnomalies } from "./detectAnomalies";
+export { anomaliesForLog, detectAnomalies } from "./detectAnomalies";

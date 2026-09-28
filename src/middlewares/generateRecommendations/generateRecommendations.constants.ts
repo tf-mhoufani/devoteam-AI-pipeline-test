@@ -11,6 +11,17 @@ Rules:
 - Insights are window aggregates (averages and maxes), not the current live state. The group counts the peaks to fix.
 - parameters.value MUST be a string, number, boolean, or an array of those. Do not nest objects.`;
 
+/** System prompt for correlated incident clusters (co-occurrence or temporal cascade). */
+export const GROQ_CLUSTER_SYSTEM_PROMPT = `You are a senior DevOps engineer. Recommend fixes for a CORRELATED incident cluster on THIS infrastructure only.
+
+Rules:
+- Treat the listed metrics as one related incident, not independent spikes.
+- Propose 1 or 2 root-cause recommendations that address the combined pattern.
+- For co-occurrence: metrics spiked on the same timestamps — look for overload, saturation, or missing capacity.
+- For temporal cascade: latency spikes were followed by error-rate spikes — prioritize timeout, retry, and circuit-breaker fixes.
+- target MUST be one of the allowed service names listed in the user message. Never invent a service.
+- parameters.value MUST be a string, number, boolean, or an array of those. Do not nest objects.`;
+
 /** System prompt for degraded / offline services. */
 export const GROQ_STATUS_SYSTEM_PROMPT = `You are a senior DevOps engineer. Restore service health for THIS infrastructure only.
 
@@ -22,16 +33,18 @@ Rules:
 - Never invent a service, cluster, or product name.
 - parameters.value MUST be a string, number, boolean, or an array of those. Do not nest objects.`;
 
-/** System prompt to merge duplicate drafts and rank by operational urgency. */
-export const GROQ_SYNTHESIS_SYSTEM_PROMPT = `You are a senior DevOps engineer. Deduplicate and rank existing recommendations for THIS infrastructure only.
+/** System prompt to merge draft recommendations into one action per target. */
+export const GROQ_SYNTHESIS_SYSTEM_PROMPT = `You are a senior DevOps engineer. Merge draft recommendations for THIS infrastructure only.
 
 Rules:
-- Do not invent new actions, targets, or services. Only reuse the draft recommendations.
-- Merge semantically identical drafts (same intent and similar parameters, even if the action name differs, e.g. increase_ttl vs increase_cache_ttl).
-- Keep two drafts on the same target when the actions truly differ (e.g. cache TTL vs cache retries).
-- Never drop a draft that restores an offline service or stabilizes a degraded service unless a kept draft already covers that same action.
-- Rank by criticality: offline restore first, then degraded stabilization, then metric optimizations (scale, TTL, caching).
-- target MUST stay one of the allowed service names. Never invent a name.
+- Output at most ONE recommendation per target. Never output two rows with the same target.
+- Do not invent new targets, services, or actions. Only merge what appears in the drafts.
+- For each target, combine all draft actions into one clear action label that reflects every intent (e.g. restart, scale, circuit breaker, cache TTL).
+- Merge parameters from all drafts on that target into a single parameters object: union all keys; if the same key has conflicting values, keep the value from the highest-priority draft (offline restore > degraded stabilization > metric tuning).
+- Write one benefit_estimate per target that summarizes the combined impact of every merged draft. Do not drop stated benefits — combine them into one concise sentence.
+- Never drop an offline restore or degraded stabilization intent for a target unless the merged action and parameters already cover it.
+- Rank the final list by criticality: offline restore first, then degraded stabilization, then metric optimizations.
+- target MUST stay one of the allowed service names listed in the user message.
 - parameters.value MUST be a string, number, boolean, or an array of those. Do not nest objects.`;
 
 /** Ranking of severity levels for anomaly selection. */

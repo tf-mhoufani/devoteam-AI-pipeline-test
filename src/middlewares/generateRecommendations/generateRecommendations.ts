@@ -1,5 +1,12 @@
-import type { PartialAnalysisReport, Recommendation } from "#types/schema";
+import { consoleLogger, type Logger } from "#helpers/logger";
+import type {
+  Anomaly,
+  IncidentCluster,
+  PartialAnalysisReport,
+  Recommendation,
+} from "#types/schema";
 import {
+  buildClusterRecommendationPrompt,
   buildRecommendationPrompt,
   buildStatusRecommendationPrompt,
   buildSynthesisPrompt,
@@ -7,6 +14,7 @@ import {
   unhealthyServicesFrom,
 } from "./buildRecommendationPrompt";
 import {
+  GROQ_CLUSTER_SYSTEM_PROMPT,
   GROQ_STATUS_SYSTEM_PROMPT,
   GROQ_SYNTHESIS_SYSTEM_PROMPT,
   GROQ_SYSTEM_PROMPT,
@@ -21,6 +29,10 @@ import {
 
 type GroqJob = GroqPrompts & {
   label: string;
+};
+
+export type GenerateRecommendationsOptions = {
+  logger?: Logger;
 };
 
 /**
@@ -39,17 +51,69 @@ const withUniqueIds = (recommendations: Recommendation[]): Recommendation[] =>
  * @param state - The state of the analysis.
  * @returns The jobs for the Groq API.
  */
+const timestampsCoveredByClusters = (
+  clusters: IncidentCluster[],
+): Set<string> => {
+  const covered = new Set<string>();
+
+  for (const cluster of clusters) {
+    if (cluster.log_count === 0) continue;
+    for (const timestamp of cluster.timestamps) {
+      covered.add(timestamp);
+    }
+  }
+
+  return covered;
+};
+
+const anomaliesRemainingAfterClusters = (
+  anomalies: Anomaly[],
+  clusters: IncidentCluster[],
+): Anomaly[] => {
+  const covered = timestampsCoveredByClusters(clusters);
+  return anomalies.filter((anomaly) => !covered.has(anomaly.timestamp));
+};
+
 const jobsFrom = (state: PartialAnalysisReport): GroqJob[] => {
-  const groups = groupAnomaliesByMetric(state.anomalies ?? []);
-  const jobs: GroqJob[] = groups.map((group) => ({
-    label: `${group.metric}, ${group.count} peaks`,
-    userContent: buildRecommendationPrompt(
-      state.insights,
-      group,
-      state.service_status_summary,
-    ),
-    systemPrompt: GROQ_SYSTEM_PROMPT,
-  }));
+  const jobs: GroqJob[] = [];
+  const clusters = state.incident_clusters ?? [];
+
+  for (const cluster of clusters) {
+    if (cluster.log_count === 0) continue;
+
+    const label =
+      cluster.type === "temporal_cascade"
+        ? `cascade: ${cluster.metrics.join(" → ")}, ${cluster.log_count} events`
+        : `cluster: ${cluster.metrics.join(" + ")}, ${cluster.log_count} logs`;
+
+    jobs.push({
+      label,
+      userContent: buildClusterRecommendationPrompt(
+        state.insights,
+        cluster,
+        state.service_status_summary,
+      ),
+      systemPrompt: GROQ_CLUSTER_SYSTEM_PROMPT,
+    });
+  }
+
+  const remaining = anomaliesRemainingAfterClusters(
+    state.anomalies ?? [],
+    clusters,
+  );
+  const groups = groupAnomaliesByMetric(remaining);
+
+  jobs.push(
+    ...groups.map((group) => ({
+      label: `${group.metric}, ${group.count} peaks`,
+      userContent: buildRecommendationPrompt(
+        state.insights,
+        group,
+        state.service_status_summary,
+      ),
+      systemPrompt: GROQ_SYSTEM_PROMPT,
+    })),
+  );
 
   const unhealthy = unhealthyServicesFrom(state.service_status_summary);
   if (hasUnhealthyServices(unhealthy)) {
@@ -78,29 +142,33 @@ const jobsFrom = (state: PartialAnalysisReport): GroqJob[] => {
 const synthesizeRecommendations = async (
   state: PartialAnalysisReport,
   drafts: Recommendation[],
+  logger: Logger,
 ): Promise<Recommendation[]> => {
   if (drafts.length < 2) return drafts;
 
   await sleep(getBatchPauseMs());
-  console.log(
-    `🤖 Groq synthesis (${drafts.length} recommendations → filter & rank)...`,
+  logger.info(
+    `Groq synthesis (${drafts.length} recommendations → filter and rank)...`,
   );
 
-  const synthesized = await requestRecommendations({
-    userContent: buildSynthesisPrompt(
-      state.insights,
-      drafts,
-      state.service_status_summary,
-    ),
-    systemPrompt: GROQ_SYNTHESIS_SYSTEM_PROMPT,
-  });
+  const synthesized = await requestRecommendations(
+    {
+      userContent: buildSynthesisPrompt(
+        state.insights,
+        drafts,
+        state.service_status_summary,
+      ),
+      systemPrompt: GROQ_SYNTHESIS_SYSTEM_PROMPT,
+    },
+    logger,
+  );
 
   if (synthesized.length === 0) {
-    console.warn("⚠️ Groq synthesis empty, keeping draft recommendations");
+    logger.warn("Groq synthesis returned no recommendations, keeping drafts");
     return drafts;
   }
 
-  console.log(`   ✓ ${synthesized.length} recommendations`);
+  logger.info(`${synthesized.length} recommendation(s) after synthesis`);
   return synthesized;
 };
 
@@ -110,6 +178,7 @@ const synthesizeRecommendations = async (
  */
 export const generateRecommendations = async (
   state: PartialAnalysisReport,
+  { logger = consoleLogger }: GenerateRecommendationsOptions = {},
 ): Promise<PartialAnalysisReport> => {
   const jobs = jobsFrom(state);
   if (jobs.length === 0) {
@@ -122,23 +191,28 @@ export const generateRecommendations = async (
   for (const [index, job] of jobs.entries()) {
     if (index > 0) await sleep(getBatchPauseMs());
 
-    console.log(`🤖 Groq group ${index + 1}/${total} (${job.label})...`);
+    logger.info(`Groq batch ${index + 1}/${total} (${job.label})...`);
 
-    const received = await requestRecommendations({
-      userContent: job.userContent,
-      systemPrompt: job.systemPrompt,
-    });
+    const received = await requestRecommendations(
+      {
+        userContent: job.userContent,
+        systemPrompt: job.systemPrompt,
+      },
+      logger,
+    );
     recommendations.push(...received);
 
-    console.log(
-      `   ✓ ${received.length} recommendations (${recommendations.length} total)`,
+    logger.info(
+      `${received.length} recommendation(s) (${recommendations.length} total)`,
     );
   }
 
-  const ranked = await synthesizeRecommendations(state, recommendations);
+  const ranked = await synthesizeRecommendations(state, recommendations, logger);
+
+  const { incident_clusters: _clusters, ...report } = state;
 
   return {
-    ...state,
+    ...report,
     recommendations: withUniqueIds(ranked),
   };
 };

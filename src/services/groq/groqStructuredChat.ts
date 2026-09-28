@@ -39,11 +39,11 @@ export const createGroqStructuredChat = async <T>({
   });
 
   const content = response.choices[0]?.message?.content;
-  if (!content) throw new Error("Échec de la génération Groq");
+  if (!content) throw new Error("Groq generation failed");
 
   // parseJson is used to parse the response from the Groq API.
   const parsed = parseJson(content);
-  if (parsed === undefined) throw new Error("Échec de la génération Groq");
+  if (parsed === undefined) throw new Error("Groq generation failed");
 
   return parse(parsed);
 };

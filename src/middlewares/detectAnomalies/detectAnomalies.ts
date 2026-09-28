@@ -1,5 +1,11 @@
-import type { LogEntry, PartialAnalysisReport } from "#types/schema";
+import type { Anomaly, LogEntry, PartialAnalysisReport } from "#types/schema";
 import { ANOMALY_STRATEGIES } from "./anomalyStrategies";
+
+export const anomaliesForLog = (log: LogEntry): Anomaly[] =>
+  ANOMALY_STRATEGIES.flatMap((strategy) => {
+    const anomaly = strategy.evaluate(log);
+    return anomaly ? [anomaly] : [];
+  });
 
 /**
  * Isolates abnormal events from the raw logs so later nodes (and Groq)
@@ -11,12 +17,7 @@ export const detectAnomalies = (
 ): PartialAnalysisReport => {
   if (!logs || logs.length === 0) return state;
 
-  const anomalies = logs.flatMap((log) =>
-    ANOMALY_STRATEGIES.flatMap((strategy) => {
-      const anomaly = strategy.evaluate(log);
-      return anomaly ? [anomaly] : [];
-    }),
-  );
+  const anomalies = logs.flatMap((log) => anomaliesForLog(log));
 
   return {
     ...state,

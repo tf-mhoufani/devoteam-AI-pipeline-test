@@ -1,5 +1,9 @@
 import type { AnomalyGroup } from "./groupAnomaliesByMetric";
-import type { PartialAnalysisReport, Recommendation } from "#types/schema";
+import type {
+  IncidentCluster,
+  PartialAnalysisReport,
+  Recommendation,
+} from "#types/schema";
 
 export type UnhealthyServices = {
   degraded: string[];
@@ -53,6 +57,27 @@ export const buildRecommendationPrompt = (
 };
 
 /**
+ * Builds the Groq user message for one correlated incident cluster.
+ * Role and output rules live in GROQ_CLUSTER_SYSTEM_PROMPT.
+ */
+export const buildClusterRecommendationPrompt = (
+  insights: PartialAnalysisReport["insights"],
+  cluster: IncidentCluster,
+  serviceStatus: PartialAnalysisReport["service_status_summary"],
+): string => {
+  const allowedTargets = allowedTargetsFrom(serviceStatus);
+
+  return `
+    Allowed targets: ${allowedTargets.join(", ") || "(none — do not invent a service)"}
+
+    Insights are window aggregates (averages and maxes), not the current live state.
+    Current insights : ${JSON.stringify(insights)}
+    Service statuses seen over the window : ${JSON.stringify(serviceStatus ?? {})}
+    Incident cluster : ${JSON.stringify(cluster)}
+  `;
+};
+
+/**
  * Builds the Groq user message for degraded / offline services.
  * Role and output rules live in GROQ_STATUS_SYSTEM_PROMPT.
  */
@@ -92,6 +117,6 @@ export const buildSynthesisPrompt = (
     Current insights : ${JSON.stringify(insights)}
     Service statuses seen over the window : ${JSON.stringify(serviceStatus ?? {})}
     Draft recommendations : ${JSON.stringify(drafts)}
-    Merge duplicates, keep distinct actions, rank by criticality (offline, then degraded, then metrics).
+    Merge into at most one recommendation per target: combine actions, union parameters, one enriched benefit_estimate per target. Rank by criticality (offline, then degraded, then metrics).
   `;
 };

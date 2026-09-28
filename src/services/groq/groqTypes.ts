@@ -1,3 +1,4 @@
+import type { Logger } from "#helpers/logger";
 import type OpenAI from "openai";
 
 /**
@@ -35,4 +36,5 @@ export type GroqStructuredRequest<T> = GroqChatPrompt & {
 export type GroqRetryRequest<T> = GroqStructuredRequest<T> & {
   recoverFailedGeneration?: (raw: string) => T | undefined;
   onSkip?: () => T;
+  logger?: Logger;
 };

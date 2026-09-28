@@ -52,11 +52,32 @@ export const AnomalySchema = z
     value: z.number(),
     threshold: z.number(),
     severity: SeveritySchema,
+    timestamp: z.iso.datetime(),
     description: z.string(),
   })
   .strict();
 
 export type Anomaly = z.infer<typeof AnomalySchema>;
+
+export const IncidentClusterTypeSchema = z.enum([
+  "co_occurrence",
+  "temporal_cascade",
+]);
+export type IncidentClusterType = z.infer<typeof IncidentClusterTypeSchema>;
+
+export const IncidentClusterSchema = z
+  .object({
+    id: z.string(),
+    type: IncidentClusterTypeSchema,
+    metrics: z.array(z.string()),
+    timestamps: z.array(z.iso.datetime()),
+    severity: SeveritySchema,
+    log_count: z.number(),
+    description: z.string(),
+  })
+  .strict();
+
+export type IncidentCluster = z.infer<typeof IncidentClusterSchema>;
 
 export const RecommendationSchema = z
   .object({
@@ -94,4 +115,7 @@ export type AnalysisReport = z.infer<typeof OutputSchema>;
 // 3. PARTIAL REPORT (filled step by step)
 // ============================================================================
 
-export type PartialAnalysisReport = Partial<AnalysisReport>;
+/** Pipeline state; `incident_clusters` is internal (Groq orchestration only). */
+export type PartialAnalysisReport = Partial<AnalysisReport> & {
+  incident_clusters?: IncidentCluster[];
+};

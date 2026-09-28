@@ -5,8 +5,10 @@ import {
   type PartialAnalysisReport,
 } from "#types/schema";
 import { aggregateInsights } from "#middlewares/aggregateInsights";
+import { correlateAnomalies } from "#middlewares/correlateAnomalies";
 import { detectAnomalies } from "#middlewares/detectAnomalies";
 import { generateRecommendations } from "#middlewares/generateRecommendations";
+import { consoleLogger } from "#helpers/logger";
 import { pipe } from "#helpers/pipe";
 import { parseArgs } from "node:util";
 import { loadJson } from "#helpers/loadJson";
@@ -19,13 +21,10 @@ interface LogAnalyzerOptions {
 
 // Fonction d'orchestration principale
 const logAnalyzer = async ({ inputPath, outputPath }: LogAnalyzerOptions) => {
+  const logger = consoleLogger;
+
   try {
-
-    // ---------------- LOADING ----------------
-    // Loading the logs from the input file
-    // Validation of the logs against the logEntrySchema
-
-    console.log("📥 Lecture du fichier de logs...");
+    logger.info("Reading log file...");
     const logs = await loadJson({
       path: inputPath,
       schema: z.array(logEntrySchema),
@@ -36,19 +35,20 @@ const logAnalyzer = async ({ inputPath, outputPath }: LogAnalyzerOptions) => {
     // Detection of the anomalies
     // Generation of the recommendations
 
-    console.log("🚀  Execution of the analysis pipeline...");
+    logger.info("Running analysis pipeline...");
 
     const analyzedlogs = await pipe<PartialAnalysisReport>(
       (s) => aggregateInsights(logs, s),
       (s) => detectAnomalies(logs, s),
-      generateRecommendations,
+      (s) => correlateAnomalies(logs, s),
+      (s) => generateRecommendations(s, { logger }),
     )({});
 
     // ---------------- OUTPUT ----------------
     // Writing the final output to the output file
     // Validation of the output against the OutputSchema
 
-    console.log("💾 Writing the output file...");
+    logger.info("Writing output file...");
     await writeJson({
       path: outputPath,
       data: {
@@ -61,10 +61,9 @@ const logAnalyzer = async ({ inputPath, outputPath }: LogAnalyzerOptions) => {
       schema: OutputSchema,
     });
 
-    console.log(`✅ Success ! The file ${outputPath} has been generated.`);
-
+    logger.info(`Success. Generated ${outputPath}.`);
   } catch (error) {
-    console.error("❌ Error during the execution of the pipeline :", error);
+    logger.error("Pipeline execution failed:", error);
     process.exit(1);
   }
 };

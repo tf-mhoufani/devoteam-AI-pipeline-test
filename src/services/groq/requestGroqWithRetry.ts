@@ -1,3 +1,4 @@
+import { consoleLogger } from "#helpers/logger";
 import { sleep } from "#helpers/sleep";
 import { getBatchPauseMs, getMaxRetries } from "./groqConfig";
 import {
@@ -19,6 +20,7 @@ import type { GroqRetryRequest } from "./groqTypes";
 export const requestGroqWithRetry = async <T>({
   recoverFailedGeneration,
   onSkip,
+  logger = consoleLogger,
   ...request
 }: GroqRetryRequest<T>): Promise<T> => {
   let rateLimitAttempts = 0;
@@ -33,14 +35,14 @@ export const requestGroqWithRetry = async <T>({
         if (rateLimitAttempts < maxRetries) {
           rateLimitAttempts += 1;
           const delayMs = getRetryDelayMs(error);
-          console.warn(
-            `⏳ Groq 429, waiting ${delayMs}ms (${rateLimitAttempts}/${maxRetries})...`,
+          logger.warn(
+            `Groq rate limit (429), waiting ${delayMs}ms (${rateLimitAttempts}/${maxRetries})...`,
           );
           await sleep(delayMs);
           continue;
         }
 
-        console.warn("⚠️ Groq 429 persisted, skipping request");
+        logger.warn("Groq rate limit (429) persisted, skipping request");
         return onSkip?.() as T;
       }
 
@@ -51,22 +53,22 @@ export const requestGroqWithRetry = async <T>({
           : undefined;
 
         if (recovered !== undefined) {
-          console.warn(
-            "⚠️ Groq schema mismatch, recovering from failed_generation",
+          logger.warn(
+            "Groq schema mismatch, recovering from failed_generation",
           );
           return recovered;
         }
 
         if (schemaAttempts < maxRetries) {
           schemaAttempts += 1;
-          console.warn(
-            `⚠️ Groq schema mismatch, retrying (${schemaAttempts}/${maxRetries})...`,
+          logger.warn(
+            `Groq schema mismatch, retrying (${schemaAttempts}/${maxRetries})...`,
           );
           await sleep(getBatchPauseMs());
           continue;
         }
 
-        console.warn("⚠️ Groq schema mismatch, skipping request");
+        logger.warn("Groq schema mismatch, skipping request");
         return onSkip?.() as T;
       }
 
