@@ -1,4 +1,5 @@
-import { writeFile } from "fs/promises";
+import { mkdir, writeFile } from "fs/promises";
+import { dirname } from "path";
 import type { z } from "zod";
 
 interface WriteJsonOptions<T extends z.ZodType> {
@@ -16,5 +17,6 @@ export const writeJson = async <T extends z.ZodType>({
   schema,
 }: WriteJsonOptions<T>): Promise<void> => {
   const parsed = schema.parse(data);
+  await mkdir(dirname(path), { recursive: true });
   await writeFile(path, JSON.stringify(parsed, null, 2));
 };

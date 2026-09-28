@@ -1,23 +1,23 @@
 import { describe, expect, it } from "vitest";
 import { correlateAnomalies } from "#middlewares/correlateAnomalies";
-import { createLog } from "../../fixtures";
+import { createLog, withLogs } from "#test/fixtures";
 
 describe("correlateAnomalies", () => {
   it("returns empty clusters when logs are empty", () => {
-    const result = correlateAnomalies([], { anomalies: [] });
+    const result = correlateAnomalies({ anomalies: [] }, withLogs([]));
     expect(result.incident_clusters).toEqual([]);
   });
 
   it("detects co-occurrence when multiple metrics spike on the same log", () => {
     const result = correlateAnomalies(
-      [
+      { anomalies: [] },
+      withLogs([
         createLog({
           cpu_usage: 96,
           latency_ms: 360,
           error_rate: 0.08,
         }),
-      ],
-      { anomalies: [] },
+      ]),
     );
 
     expect(result.incident_clusters).toEqual(
@@ -37,15 +37,15 @@ describe("correlateAnomalies", () => {
 
   it("groups co-occurrence clusters by metric signature", () => {
     const result = correlateAnomalies(
-      [
+      { anomalies: [] },
+      withLogs([
         createLog({ cpu_usage: 96, latency_ms: 360 }),
         createLog({
           timestamp: "2023-10-01T13:00:00Z",
           cpu_usage: 97,
           latency_ms: 400,
         }),
-      ],
-      { anomalies: [] },
+      ]),
     );
 
     const coOccurrence = result.incident_clusters?.filter(
@@ -61,15 +61,15 @@ describe("correlateAnomalies", () => {
 
   it("detects temporal cascade when latency is followed by error rate", () => {
     const result = correlateAnomalies(
-      [
+      { anomalies: [] },
+      withLogs([
         createLog({ latency_ms: 360, error_rate: 0.01 }),
         createLog({
           timestamp: "2023-10-01T13:00:00Z",
           latency_ms: 120,
           error_rate: 0.08,
         }),
-      ],
-      { anomalies: [] },
+      ]),
     );
 
     const cascade = result.incident_clusters?.find(
@@ -88,8 +88,8 @@ describe("correlateAnomalies", () => {
 
   it("does not create co-occurrence for a single-metric spike", () => {
     const result = correlateAnomalies(
-      [createLog({ cpu_usage: 96 })],
       { anomalies: [] },
+      withLogs([createLog({ cpu_usage: 96 })]),
     );
 
     expect(

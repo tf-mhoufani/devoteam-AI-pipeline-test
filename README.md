@@ -26,7 +26,7 @@ GROQ_MAX_RETRIES=3
 npm start
 # same as:
 npm run analyze-logs -- --input ./data/rapport.json --output ./report/output.json
-npm test
+npm run check   # typecheck + lint + tests with coverage (85% threshold on src/)
 ```
 
 
@@ -44,7 +44,7 @@ Files in `report/` are gitignored.
 data/rapport.json
         │
         ▼
-  logAnalyzer (CLI) — loadJson + Zod
+  infraLogAnalyzer (CLI) — loadJson + Zod
         │
         ▼
   pipe(PartialAnalysisReport)
@@ -139,6 +139,8 @@ New rules are added as strategies in `ANOMALY_STRATEGIES` — no schema change n
 
 **Role:** Group anomalies into incident clusters so Groq sees related signals, not isolated metrics. No AI.
 
+**Why:** Without correlation, Groq receives one prompt per metric group — CPU, latency, and error rate spikes at the same timestamp look like three independent problems, which leads to redundant or context-free recommendations. Clusters turn related signals into one incident narrative (e.g. saturation, or latency causing downstream errors) so Groq can suggest a root-cause fix instead of three separate tunings. Detection stays exhaustive: `anomalies[]` remains complete in the final JSON; `incident_clusters` is internal state used only to orchestrate Groq calls.
+
 ```
 LogEntry[] + anomalies from detectAnomalies
         │
@@ -229,17 +231,18 @@ The middleware splits **detection** (full list of spikes) from **recommendation*
 Each Groq call is isolated; the model does not see recommendations from previous calls.
 
 
-| Step              | Input sent                                                                 | Goal                                              |
-| ----------------- | -------------------------------------------------------------------------- | ------------------------------------------------- |
-| 1 call / metric   | Group summary (`count`, `min`, `max`, `bySeverity`, 2 worst `examples`)   | 1–2 recos per spike type (CPU, latency, error rate) |
-| 1 call for status | `degraded` / `offline` services                                            | 1 reco per service to fix                         |
+| Step                 | Input sent                                                                 | Goal                                              |
+| -------------------- | -------------------------------------------------------------------------- | ------------------------------------------------- |
+| 1 call / cluster     | Correlated incident (`co_occurrence` or `temporal_cascade`)                | 1–2 root-cause recos for the combined pattern     |
+| 1 call / metric      | Remaining metric groups (timestamps not covered by a cluster)              | 1–2 recos per spike type                          |
+| 1 call for status    | `degraded` / `offline` services                                            | 1 reco per service to fix                         |
 
 
 **Why group by metric?** On the sample data, 303 spikes = 6 metrics. Sending each spike would mean hundreds of calls, many tokens, and repeated recommendations. Groq gets the scale (`count: 49`) without reading 49 lines. Grouping is only for the prompt.
 
 **Pass 2 — synthesis**
 
-One final call gets all drafts + insights + `service_status_summary`. It does not create new actions. It **merges** semantic duplicates (e.g. `increase_ttl` and `increase_cache_ttl` at 3600 s) and **ranks** by urgency:
+One final call gets all drafts + insights + `service_status_summary`. It does not create new actions. It outputs **at most one recommendation per target** (e.g. merge two `database` drafts into one row), combines actions and parameters, and **ranks** by urgency:
 
 1. restore **offline**
 2. stabilize **degraded**
@@ -247,7 +250,7 @@ One final call gets all drafts + insights + `service_status_summary`. It does no
 
 If synthesis returns an empty list, drafts are kept.
 
-Typical result: ~8 Groq calls (6 metric groups + status + synthesis), a short ranked list instead of hundreds of near-duplicates.
+Typical result: cluster jobs + remaining metric groups + status + synthesis — a short ranked list (often 3 recos on sample data) instead of hundreds of near-duplicates.
 
 ## Technical choices
 
@@ -261,15 +264,15 @@ Usual stack (Node + TypeScript, ~9 years backend and frontend): strict typing, N
 | **Zod 4**           | Validate input/output, infer types (`z.infer`), parse Groq responses (`safeParse`), build JSON Schema (`z.toJSONSchema`) — one contract. |
 | **tsx**             | Run the CLI directly (`tsx --env-file=.env`).                                                                                          |
 | **OpenAI SDK**      | Groq entry point; `maxRetries: 0`, 429/400 handling in `services/groq`.                                                               |
-| **Vitest**          | Jest-like API; native ESM, `#` aliases, Groq mocks (`vi.mock` + `await import`). 85% coverage on middlewares.                        |
+| **Vitest**          | Jest-like API; native ESM, `#` aliases, Groq mocks (`vi.mock` + `await import`). 85% coverage threshold on `src/` (`npm run check`). |
 | **ESLint + Prettier** | TS lint + formatting.                                                                                                                |
 
 
 ### Middlewares, not LangGraph
 
-Linear flow: load → aggregate → detect → recommend → write. `pipe(step, step, step)` is enough. No graph, agent loop, or tool-calling. LangGraph would add complexity for a problem already solved with testable middlewares.
+Linear flow: load → aggregate → detect → correlate → recommend → write. `pipe(step, step, step)` is enough. No graph, agent loop, or tool-calling. LangGraph would add complexity for a problem already solved with testable middlewares.
 
-Patterns used: **strategy** for insights/anomalies, **reusable service** for Groq, **injectable logger**, **helpers** (`pipe`, `loadJson`, `writeJson`, `logger`), one folder per step with `index.ts` re-exports.
+Patterns used: **strategy** for insights/anomalies, **shared `PipelineContext`** (`logs`, `logger`) on every middleware, **reusable service** for Groq, **injectable logger**, **helpers** (`pipe`, `loadJson`, `writeJson`, `logger`), one folder per step with `index.ts` re-exports.
 
 ### Groq service layer
 
@@ -288,15 +291,17 @@ Another middleware can reuse `requestGroqWithRetry` with a different JSON schema
 ## Repo structure
 
 
-| Folder                       | Role                          |
-| ---------------------------- | ----------------------------- |
-| `src/scripts/logAnalyzer.ts` | CLI orchestrator              |
-| `src/middlewares/*`          | one pipeline step             |
-| `src/services/groq`          | reusable Groq client          |
-| `src/helpers/*`              | shared utilities              |
-| `src/types/schema.ts`        | Zod contracts + inferred types |
-| `data/`                      | input logs                    |
-| `report/`                    | generated output              |
+| Folder                            | Role                          |
+| --------------------------------- | ----------------------------- |
+| `src/scripts/infraLogAnalyzer.ts` | CLI orchestrator              |
+| `src/middlewares/*`               | one pipeline step             |
+| `src/services/groq`               | reusable Groq client          |
+| `src/helpers/*`                   | shared utilities              |
+| `src/types/schema.ts`             | Zod contracts + inferred types |
+| `src/types/pipeline.ts`           | `PipelineContext`, middleware type |
+| `src/test/fixtures.ts`            | shared test helpers (`createLog`, `withLogs`) |
+| `data/`                           | input logs                    |
+| `report/`                         | generated output (gitignored) |
 
 ## Future analysis directions
 

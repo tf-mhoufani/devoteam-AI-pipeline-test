@@ -5,6 +5,7 @@ import type {
   PartialAnalysisReport,
   Recommendation,
 } from "#types/schema";
+import type { PipelineContext } from "#types/pipeline";
 import {
   buildClusterRecommendationPrompt,
   buildRecommendationPrompt,
@@ -29,10 +30,6 @@ import {
 
 type GroqJob = GroqPrompts & {
   label: string;
-};
-
-export type GenerateRecommendationsOptions = {
-  logger?: Logger;
 };
 
 /**
@@ -178,9 +175,12 @@ const synthesizeRecommendations = async (
  */
 export const generateRecommendations = async (
   state: PartialAnalysisReport,
-  { logger = consoleLogger }: GenerateRecommendationsOptions = {},
+  ctx: PipelineContext = { logs: [] },
 ): Promise<PartialAnalysisReport> => {
+  const logger = ctx.logger ?? consoleLogger;
   const jobs = jobsFrom(state);
+
+  // If there are no jobs, return the state with no recommendations
   if (jobs.length === 0) {
     return { ...state, recommendations: [] };
   }
@@ -188,6 +188,7 @@ export const generateRecommendations = async (
   const recommendations: Recommendation[] = [];
   const total = jobs.length;
 
+  // Loop through the jobs and request recommendations from the Groq API
   for (const [index, job] of jobs.entries()) {
     if (index > 0) await sleep(getBatchPauseMs());
 
@@ -207,12 +208,15 @@ export const generateRecommendations = async (
     );
   }
 
+  // Synthesize the recommendations
   const ranked = await synthesizeRecommendations(state, recommendations, logger);
 
-  const { incident_clusters: _clusters, ...report } = state;
+  // Remove the incident_clusters from the state
+  const { incident_clusters, ...restState } = state;
+  void incident_clusters;
 
   return {
-    ...report,
+    ...restState,
     recommendations: withUniqueIds(ranked),
   };
 };

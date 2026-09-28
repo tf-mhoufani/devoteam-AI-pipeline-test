@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { aggregateInsights } from "#middlewares/aggregateInsights";
-import { createLog } from "../../fixtures";
+import { createLog, withLogs } from "#test/fixtures";
 
 describe("aggregateInsights", () => {
   it("throws when logs are empty", () => {
-    expect(() => aggregateInsights([], {})).toThrow("No log entries provided");
+    expect(() => aggregateInsights({}, withLogs([]))).toThrow(
+      "No log entries provided",
+    );
   });
 
   it("computes averages, maxes and keeps existing state", () => {
@@ -30,7 +32,7 @@ describe("aggregateInsights", () => {
       }),
     ];
 
-    const result = aggregateInsights(logs, { anomalies: [] });
+    const result = aggregateInsights({ anomalies: [] }, withLogs(logs));
 
     expect(result.insights).toEqual({
       average_latency_ms: 150,

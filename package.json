@@ -1,15 +1,18 @@
 {
   "name": "devoteam-ai-pipeline-test",
   "version": "1.0.0",
-  "description": "make AI recommentations from json data ",
+  "description": "Make AI recommendations from infra log data.",
   "type": "module",
-  "main": "./src/index.ts",
   "scripts": {
     "start": "npm run analyze-logs -- --input ./data/rapport.json --output ./report/output.json",
-    "analyze-logs": "tsx --env-file=.env src/scripts/logAnalyzer.ts",
+    "analyze-logs": "tsx --env-file=.env src/scripts/infraLogAnalyzer.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run typecheck && npm run lint && npm run test:coverage"
   },
   "repository": {
     "type": "git",
@@ -41,6 +44,7 @@
     "#types/*": "./src/types/*.ts",
     "#middlewares/*": "./src/middlewares/*/index.ts",
     "#helpers/*": "./src/helpers/*.ts",
-    "#services/*": "./src/services/*/index.ts"
+    "#services/*": "./src/services/*/index.ts",
+    "#test/*": "./src/test/*.ts"
   }
 }

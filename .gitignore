@@ -1,6 +1,5 @@
 .env
 node_modules/
-report/*
-!report/.gitkeep
+report/
 output.json
 coverage

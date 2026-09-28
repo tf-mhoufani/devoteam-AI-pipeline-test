@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { detectAnomalies } from "#middlewares/detectAnomalies";
-import { createLog } from "../../fixtures";
+import { createLog, withLogs } from "#test/fixtures";
 import type { PartialAnalysisReport } from "#types/schema";
 
 describe("detectAnomalies", () => {
@@ -14,7 +14,7 @@ describe("detectAnomalies", () => {
         uptime_seconds: 0,
       },
     };
-    expect(detectAnomalies([], state)).toBe(state);
+    expect(detectAnomalies(state, withLogs([]))).toBe(state);
   });
 
   it.each([
@@ -61,7 +61,10 @@ describe("detectAnomalies", () => {
   ])(
     "flags $expected.metric as $expected.severity",
     ({ expected, ...overrides }) => {
-      const { anomalies } = detectAnomalies([createLog(overrides)], {});
+      const { anomalies } = detectAnomalies(
+        {},
+        withLogs([createLog(overrides)]),
+      );
       expect(anomalies).toEqual(
         expect.arrayContaining([expect.objectContaining(expected)]),
       );
@@ -69,13 +72,14 @@ describe("detectAnomalies", () => {
   );
 
   it("does not flag healthy metrics", () => {
-    const { anomalies } = detectAnomalies([createLog()], {});
+    const { anomalies } = detectAnomalies({}, withLogs([createLog()]));
     expect(anomalies).toEqual([]);
   });
 
   it("applies every matching strategy on the same log", () => {
     const { anomalies } = detectAnomalies(
-      [
+      {},
+      withLogs([
         createLog({
           cpu_usage: 96,
           latency_ms: 360,
@@ -84,8 +88,7 @@ describe("detectAnomalies", () => {
           disk_usage: 92,
           temperature_celsius: 86,
         }),
-      ],
-      {},
+      ]),
     );
 
     expect(anomalies?.map((anomaly) => anomaly.metric)).toEqual([

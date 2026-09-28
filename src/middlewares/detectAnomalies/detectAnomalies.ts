@@ -1,4 +1,5 @@
 import type { Anomaly, LogEntry, PartialAnalysisReport } from "#types/schema";
+import type { PipelineContext } from "#types/pipeline";
 import { ANOMALY_STRATEGIES } from "./anomalyStrategies";
 
 export const anomaliesForLog = (log: LogEntry): Anomaly[] =>
@@ -12,8 +13,8 @@ export const anomaliesForLog = (log: LogEntry): Anomaly[] =>
  * only see relevant peaks instead of the full healthy timeline.
  */
 export const detectAnomalies = (
-  logs: LogEntry[],
   state: PartialAnalysisReport,
+  { logs }: PipelineContext,
 ): PartialAnalysisReport => {
   if (!logs || logs.length === 0) return state;
 

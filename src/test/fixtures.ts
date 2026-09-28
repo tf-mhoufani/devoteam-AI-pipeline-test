@@ -1,4 +1,5 @@
 import type { LogEntry } from "#types/schema";
+import type { PipelineContext } from "#types/pipeline";
 
 export const createLog = (overrides: Partial<LogEntry> = {}): LogEntry => ({
   timestamp: "2023-10-01T12:00:00Z",
@@ -22,3 +23,5 @@ export const createLog = (overrides: Partial<LogEntry> = {}): LogEntry => ({
   },
   ...overrides,
 });
+
+export const withLogs = (logs: LogEntry[]): PipelineContext => ({ logs });

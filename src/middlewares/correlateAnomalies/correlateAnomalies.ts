@@ -1,4 +1,5 @@
-import type { LogEntry, PartialAnalysisReport } from "#types/schema";
+import type { PartialAnalysisReport } from "#types/schema";
+import type { PipelineContext } from "#types/pipeline";
 import { findCoOccurrenceClusters } from "./findCoOccurrenceClusters";
 import { findTemporalCascadeClusters } from "./findTemporalCascadeClusters";
 
@@ -7,8 +8,8 @@ import { findTemporalCascadeClusters } from "./findTemporalCascadeClusters";
  * temporal cascades (latency spike followed by error-rate spike).
  */
 export const correlateAnomalies = (
-  logs: LogEntry[],
   state: PartialAnalysisReport,
+  { logs }: PipelineContext,
 ): PartialAnalysisReport => {
   if (!logs || logs.length === 0) {
     return { ...state, incident_clusters: [] };

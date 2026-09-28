@@ -7,6 +7,7 @@ const anomaly = (overrides: Partial<Anomaly>): Anomaly => ({
   value: 90,
   threshold: 85,
   severity: "medium",
+  timestamp: "2023-10-01T12:00:00Z",
   description: "CPU",
   ...overrides,
 });

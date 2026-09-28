@@ -1,4 +1,5 @@
-import type { LogEntry, PartialAnalysisReport } from "#types/schema";
+import type { PartialAnalysisReport } from "#types/schema";
+import type { PipelineContext } from "#types/pipeline";
 import {
   INITIAL_INSIGHT_ACCUMULATOR,
   INSIGHT_AGGREGATORS,
@@ -11,8 +12,8 @@ import {
  * window, then merges them into the pipeline state.
  */
 export const aggregateInsights = (
-  logs: LogEntry[],
   state: PartialAnalysisReport,
+  { logs }: PipelineContext,
 ): PartialAnalysisReport => {
   if (logs.length === 0) {
     throw new Error("No log entries provided");
