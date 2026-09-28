@@ -40,6 +40,7 @@
   "imports": {
     "#types/*": "./src/types/*.ts",
     "#middlewares/*": "./src/middlewares/*/index.ts",
-    "#helpers/*": "./src/helpers/*.ts"
+    "#helpers/*": "./src/helpers/*.ts",
+    "#services/*": "./src/services/*/index.ts"
   }
 }

@@ -11,6 +11,10 @@ const GroqParameterPrimitiveSchema = z.union([
   z.boolean(),
 ]);
 
+/**
+ * Parameter entry schema for Groq recommendations.
+ * @returns The parameter entry schema.
+ */
 export const GroqParameterEntrySchema = z
   .object({
     key: z.string(),
@@ -21,6 +25,10 @@ export const GroqParameterEntrySchema = z
   })
   .strict();
 
+/**
+ * Recommendation item schema for Groq recommendations.
+ * @returns The recommendation item schema.
+ */
 export const GroqRecommendationItemSchema = z
   .object({
     id: z.string(),
@@ -31,12 +39,41 @@ export const GroqRecommendationItemSchema = z
   })
   .strict();
 
+/**
+ * Recommendations envelope schema for Groq recommendations.
+ * @returns The recommendations envelope schema.
+ */
 export const GroqRecommendationsEnvelopeSchema = z
   .object({
     recommendations: z.array(GroqRecommendationItemSchema),
   })
   .strict();
 
+/**
+ * Inbound parse schema — more permissive than `GroqRecommendationItemSchema`
+ * (strict outbound). Accepts key/value arrays or records and normalizes to a
+ * domain-shaped recommendation.
+ */
+export const GroqRecommendationParseSchema = z.object({
+  id: z.string(),
+  action: z.string(),
+  target: z.string(),
+  parameters: z
+    .union([z.record(z.string(), z.any()), z.array(GroqParameterEntrySchema)])
+    .optional()
+    .default({})
+    .transform((value) =>
+      Array.isArray(value)
+        ? Object.fromEntries(value.map(({ key, value }) => [key, value]))
+        : value,
+    ),
+  benefit_estimate: z.string().optional().default(""),
+});
+
+/**
+ * JSON Schema for Groq recommendations.
+ * @returns The JSON Schema for Groq recommendations.
+ */
 const groqJsonSchema = structuredClone(
   z.toJSONSchema(GroqRecommendationsEnvelopeSchema, {
     reused: "inline",
@@ -45,6 +82,10 @@ const groqJsonSchema = structuredClone(
 );
 delete groqJsonSchema.$schema;
 
+/**
+ * Groq response format.
+ * @returns The Groq response format.
+ */
 export const GROQ_RESPONSE_FORMAT = {
   type: "json_schema" as const,
   json_schema: {

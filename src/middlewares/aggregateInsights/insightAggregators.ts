@@ -81,22 +81,26 @@ export const toInsights = (
   uptime_seconds: acc.maxUptime,
 });
 
-export const emptyServiceStatusSummary = (): ServiceStatusSummary => ({
-  online: [],
-  degraded: [],
-  offline: [],
-});
-
 /**
- * Groups the last snapshot of service statuses without branching on each value.
+ * Lists each service under every status it had in the log window.
+ * A name can appear in several buckets if it changed over time.
  */
-export const groupServiceStatus = (
-  serviceStatus: LogEntry["service_status"],
-): ServiceStatusSummary =>
-  Object.entries(serviceStatus).reduce(
-    (summary, [serviceName, status]) => ({
-      ...summary,
-      [status]: [...summary[status], serviceName],
-    }),
-    emptyServiceStatusSummary(),
-  );
+export const groupServiceStatus = (logs: LogEntry[]): ServiceStatusSummary => {
+  const seen: Record<keyof ServiceStatusSummary, Set<string>> = {
+    online: new Set(),
+    degraded: new Set(),
+    offline: new Set(),
+  };
+
+  for (const log of logs) {
+    for (const [serviceName, status] of Object.entries(log.service_status)) {
+      seen[status].add(serviceName);
+    }
+  }
+
+  return {
+    online: [...seen.online],
+    degraded: [...seen.degraded],
+    offline: [...seen.offline],
+  };
+};

@@ -1,31 +1,37 @@
-import { readPositiveIntFromEnv } from "#helpers/readPositiveIntFromEnv";
 import type { Severity } from "#types/schema";
 
-/** Maximum number of anomalies per Groq call. */
-export const ANOMALY_BATCH_SIZE = 10;
-
-/** Pause between Groq calls to stay under the free-tier 8k TPM budget. */
-export const BATCH_PAUSE_MS = 2_000;
-
-/** Maximum number of retries for rate limit errors. */
-export const MAX_RATE_LIMIT_RETRIES = 3;
-
-/** `GROQ_BATCH_SIZE` overlay, defaults to `ANOMALY_BATCH_SIZE`. */
-export const getAnomalyBatchSize = (): number =>
-  readPositiveIntFromEnv("GROQ_BATCH_SIZE", ANOMALY_BATCH_SIZE);
-
-/** `GROQ_MAX_RETRIES` overlay, defaults to `MAX_RATE_LIMIT_RETRIES`. */
-export const getMaxRateLimitRetries = (): number =>
-  readPositiveIntFromEnv("GROQ_MAX_RETRIES", MAX_RATE_LIMIT_RETRIES);
-
-/** System prompt for the Groq API. */
+/** System prompt for the Groq API (metric groups). */
 export const GROQ_SYSTEM_PROMPT = `You are a senior DevOps engineer. Recommend concrete fixes for THIS infrastructure only.
 
 Rules:
-- Propose exactly one recommendation per anomaly in the user message.
+- Propose 1 or 2 concrete recommendations for this metric group, not one per peak.
 - target MUST be one of the allowed service names listed in the user message. Never invent a service, cluster, or product name.
-- Match the target to the metric when possible: cpu_usage or latency_ms → api_gateway; error_rate → database or api_gateway.
-- Insights are window aggregates (averages and maxes), not the current live state. Anomalies are the peaks to fix.
+- Prefer cache when a cache/TTL change would help; otherwise use api_gateway or database depending on the metric.
+- Two recommendations on the same target are fine when the actions differ.
+- Insights are window aggregates (averages and maxes), not the current live state. The group counts the peaks to fix.
+- parameters.value MUST be a string, number, boolean, or an array of those. Do not nest objects.`;
+
+/** System prompt for degraded / offline services. */
+export const GROQ_STATUS_SYSTEM_PROMPT = `You are a senior DevOps engineer. Restore service health for THIS infrastructure only.
+
+Rules:
+- Propose exactly one recommendation per degraded service and one per offline service listed in the user message.
+- If a service is both degraded and offline, treat it as offline (one recommendation).
+- target MUST be that service name. Never skip an offline or degraded service in favor of another.
+- Offline: restore availability (restart, failover, replica, connection pool). Degraded: stabilize (retries, timeouts, circuit breaker, warmup).
+- Never invent a service, cluster, or product name.
+- parameters.value MUST be a string, number, boolean, or an array of those. Do not nest objects.`;
+
+/** System prompt to merge duplicate drafts and rank by operational urgency. */
+export const GROQ_SYNTHESIS_SYSTEM_PROMPT = `You are a senior DevOps engineer. Deduplicate and rank existing recommendations for THIS infrastructure only.
+
+Rules:
+- Do not invent new actions, targets, or services. Only reuse the draft recommendations.
+- Merge semantically identical drafts (same intent and similar parameters, even if the action name differs, e.g. increase_ttl vs increase_cache_ttl).
+- Keep two drafts on the same target when the actions truly differ (e.g. cache TTL vs cache retries).
+- Never drop a draft that restores an offline service or stabilizes a degraded service unless a kept draft already covers that same action.
+- Rank by criticality: offline restore first, then degraded stabilization, then metric optimizations (scale, TTL, caching).
+- target MUST stay one of the allowed service names. Never invent a name.
 - parameters.value MUST be a string, number, boolean, or an array of those. Do not nest objects.`;
 
 /** Ranking of severity levels for anomaly selection. */

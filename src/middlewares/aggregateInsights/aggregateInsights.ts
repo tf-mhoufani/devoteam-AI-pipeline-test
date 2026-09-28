@@ -7,7 +7,7 @@ import {
 } from "./insightAggregators";
 
 /**
- * Builds global insights and a service-status snapshot from the full log
+ * Builds global insights and a service-status summary from the full log
  * window, then merges them into the pipeline state.
  */
 export const aggregateInsights = (
@@ -27,11 +27,9 @@ export const aggregateInsights = (
     INITIAL_INSIGHT_ACCUMULATOR,
   );
 
-  const lastLog = logs[logs.length - 1];
-
   return {
     ...state,
     insights: toInsights(totals, logs.length),
-    service_status_summary: groupServiceStatus(lastLog?.service_status ?? {}),
+    service_status_summary: groupServiceStatus(logs),
   };
 };

@@ -40,7 +40,7 @@ describe("aggregateInsights", () => {
       uptime_seconds: 200,
     });
     expect(result.service_status_summary).toEqual({
-      online: ["api_gateway"],
+      online: ["database", "api_gateway", "cache"],
       degraded: ["database"],
       offline: ["cache"],
     });
