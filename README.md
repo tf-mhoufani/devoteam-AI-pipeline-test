@@ -252,6 +252,28 @@ If synthesis returns an empty list, drafts are kept.
 
 Typical result: cluster jobs + remaining metric groups + status + synthesis — a short ranked list (often 3 recos on sample data) instead of hundreds of near-duplicates.
 
+### Prompt design
+
+Detection stays in TypeScript; Groq only **words** corrective actions inside a strict JSON schema. Each job uses a dedicated **system prompt** (role + rules) plus a **user prompt** built in `buildRecommendationPrompt.ts` (data: insights, group summary, clusters, service status, allowed targets).
+
+**Why four system prompts instead of one?** Each Groq call has a narrow scope. A 20B model handles short, structured tasks better than a single prompt with 303 raw spikes. Separate prompts also keep cluster root-cause logic separate from metric tuning and from service restore.
+
+| Prompt | File constant | Why it exists |
+| ------ | ------------- | ------------- |
+| Metric group | `GROQ_SYSTEM_PROMPT` | 1–2 recos per spike **type**, not per peak — saves tokens and avoids duplicate actions. Hints cache vs gateway vs database when relevant. |
+| Incident cluster | `GROQ_CLUSTER_SYSTEM_PROMPT` | Treat co-occurrence or latency→error cascade as **one incident** — root-cause fixes, not three independent tunings. |
+| Service status | `GROQ_STATUS_SYSTEM_PROMPT` | Degraded/offline services are not `anomalies[]` entries — they need their own pass. One reco per service; offline wins over degraded when both apply. |
+| Synthesis | `GROQ_SYNTHESIS_SYSTEM_PROMPT` | **Merge only** — no new targets or actions. At most **one reco per target**, combined action/parameters, ranked offline → degraded → metrics. |
+
+**Cross-cutting guardrails (all prompts):**
+
+- **`target` must be an observed service** (`database`, `api_gateway`, `cache`) — listed in the user message as `Allowed targets`. Prevents invented cloud resources.
+- **Flat `parameters`** (string / number / boolean / array) — required for Groq `json_schema` with `strict: true`.
+- **Insights are window aggregates** — the model must not treat averages as live state; spike counts come from the grouped summary.
+- **Synthesis never invents** — if it returns nothing, drafts are kept unchanged.
+
+System prompts live in `generateRecommendations.constants.ts`; user payloads are assembled per job in `buildRecommendationPrompt.ts`.
+
 ## Technical choices
 
 Usual stack (Node + TypeScript, ~9 years backend and frontend): strict typing, Node CLI, compile-time validation, no extra framework.
