@@ -108,7 +108,7 @@ const runCli = async (): Promise<void> => {
 };
 
 // ESM equivalent of `require.main === module`.
-// Run the CLI only when this file is executed directly (e.g. npm run analyze-logs).
+// Run the CLI only when this file is executed directly (e.g. npm run analyze:infra-log).
 // When Vitest imports `infraLogAnalyzer` for tests, process.argv[1] points to Vitest —
 // skip the CLI so we export the function without parseArgs, side effects, or process.exit.
 const isMainModule =

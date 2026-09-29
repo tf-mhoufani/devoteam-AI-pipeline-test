@@ -25,7 +25,7 @@ GROQ_MAX_RETRIES=3
 ```bash
 npm start
 # same as:
-npm run analyze-logs -- --input ./data/rapport.json --output ./report/output.json
+npm run analyze:log-infra -- --input ./data/rapport.json --output ./report/output.json
 npm run check   # typecheck + lint + tests with coverage (85% threshold on src/)
 ```
 
@@ -325,33 +325,10 @@ Another middleware can reuse `requestGroqWithRetry` with a different JSON schema
 | `data/`                           | input logs                    |
 | `report/`                         | generated output (gitignored) |
 
-## Future analysis directions
+## Future directions
 
-The current pipeline focuses on a small set of infra metrics with clear thresholds. The architecture is built to grow without rewriting the flow.
+The pipeline is designed to extend without rewriting the flow:
 
-**More anomaly strategies**  
-`LogEntry` exposes 15+ numeric fields. Candidates not covered yet: `io_wait`, `active_connections`, `network_in_kbps`, `power_consumption_watts`. Each new rule is one strategy in `ANOMALY_STRATEGIES` plus thresholds in `detectAnomalies.constants.ts`.
-
-**Richer correlation rules**  
-`correlateAnomalies` already handles same-log co-occurrence and latency→error cascades. Next step: sliding time windows, service-status correlation, or cross-metric root-cause scoring.
-
-**Richer insights**  
-`aggregateInsights` could add percentiles (p95 latency), trend deltas between windows, or per-service breakdowns — still deterministic, still before Groq.
-
-**Smarter grouping before Groq**  
-Group by service + metric, or by time bucket, to reduce API calls when anomaly volume grows.
-
-**Cloud-aware recommendations**  
-Sample logs do not expose a cloud platform (no region, RDS, GKE, etc.), so prompts stay vendor-neutral by default. When the platform is known, an optional env var (e.g. `CLOUD_PROVIDER=aws|gcp|azure`) could inject context into the user prompt — not the system prompt — so Groq can use provider-specific wording in `action` and `parameters` (e.g. RDS failover, Cloud SQL read replica, ALB timeout) while `target` remains limited to observed services (`database`, `api_gateway`, `cache`). When unset, the prompt should explicitly say the platform is unknown and keep recommendations generic to avoid hallucinated cloud details.
-
-**Non-threshold detection**  
-Z-score or rolling baseline for metrics without fixed limits. Keeps `detectAnomalies` deterministic if the algorithm is fixed and tested.
-
-**Service status as anomalies**  
-Today degraded/offline services trigger a separate Groq pass, not an `anomalies[]` entry. Could unify under one model if the output schema evolves.
-
-**Observability**  
-Replace console logger with structured logs (JSON), metrics on Groq latency / 429 rate, or export to OpenTelemetry.
-
-**Caching Groq responses**  
-Hash prompt + model → cache drafts when re-running the same logs during development.
+- **Detection** — more metrics from `LogEntry`, richer correlation (time windows, service status), optional baseline-based rules instead of fixed thresholds only.
+- **Recommendations** — optional `CLOUD_PROVIDER` for vendor-specific wording when the platform is known; smarter Groq grouping as anomaly volume grows.
+- **Operations** — structured logging, Groq latency / 429 metrics, draft cache for local re-runs.

@@ -4,8 +4,8 @@
   "description": "Make AI recommendations from infra log data.",
   "type": "module",
   "scripts": {
-    "start": "npm run analyze-logs -- --input ./data/rapport.json --output ./report/output.json",
-    "analyze-logs": "tsx --env-file=.env src/scripts/infraLogAnalyzer.ts",
+    "start": "npm run analyze:infra-log -- --input ./data/rapport.json --output ./report/output.json",
+    "analyze:infra-log": "tsx --env-file=.env src/scripts/infraLogAnalyzer.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
