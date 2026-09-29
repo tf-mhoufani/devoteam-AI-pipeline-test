@@ -6,18 +6,26 @@ Metrics and anomalies are computed in deterministic TypeScript. Groq only sugges
 
 ## Contents
 
+**In this file**
+
 - [Quick start](#quick-start)
-- [Pipeline](#pipeline)
-- [Middlewares](#middlewares)
-- [Groq](#groq)
-- [Repo structure](#repo-structure)
-- [Architecture details](docs/architecture.md)
+- [What infraLogAnalyzer does](#what-infraloganalyzer-does)
+
+**Architecture** ([docs/architecture.md](docs/architecture.md))
+
+- [Technical choices](docs/architecture.md#technical-choices)
+- [Pipeline overview](docs/architecture.md#pipeline-overview)
+- [Middleware details](docs/architecture.md#middlewares)
+- [Groq integration](docs/architecture.md#groq-integration)
+- [Prompt design](docs/architecture.md#prompt-design)
+- [Repo structure](docs/architecture.md#repo-structure)
+- [Future directions](docs/architecture.md#future-directions)
 
 ---
 
 ## Quick start
 
-**Requirements:** Node.js 20+, [Groq](https://console.groq.com/) API key (`GROQ_API_KEY`).
+**Requirements:** [Node.js](https://nodejs.org/) (includes `npm`), [Groq](https://console.groq.com/) API key (`GROQ_API_KEY`).
 
 ```bash
 npm install
@@ -53,67 +61,31 @@ Files in `report/` are gitignored (created automatically on write).
 
 ---
 
-## Pipeline
+## What infraLogAnalyzer does
 
-```
-data/rapport.json
-        │
-        ▼
-  infraLogAnalyzer (CLI)
-        │
-        ▼
-  pipe(PartialAnalysisReport)
-        │
-        ├─ aggregateInsights       (deterministic)
-        ├─ detectAnomalies         (deterministic)
-        ├─ correlateAnomalies      (deterministic)
-        └─ generateRecommendations (Groq)
-        │
-        ▼
-  writeJson + OutputSchema → report/output.json
-```
+`infraLogAnalyzer` is the CLI entry point. It reads a JSON log file, runs the analysis, and writes a structured report.
 
----
+**Input** — `./data/rapport.json` (infra metrics per service: CPU, latency, error rate, etc.)
 
-## Middlewares
+**Output** — `./report/output.json` with:
 
-| Middleware                  | Role                                      | AI? |
-| --------------------------- | ----------------------------------------- | --- |
-| `aggregateInsights`         | Window averages, maxes, service status    | No  |
-| `detectAnomalies`           | Threshold-based spike detection (6 metrics)| No  |
-| `correlateAnomalies`        | Link related spikes into incident clusters | No  |
-| `generateRecommendations`   | DevOps recommendations via Groq           | Yes |
+| Field                    | What it contains                                              |
+| ------------------------ | ------------------------------------------------------------- |
+| `insights`               | Window averages and peaks across the log period               |
+| `service_status_summary` | Which services were online, degraded, or offline              |
+| `anomalies`              | Every detected spike (303 on sample data) — full list         |
+| `recommendations`        | Short DevOps actions (typically ~3 after Groq synthesis)    |
 
-All middlewares share `(state, ctx)` with `ctx = { logs, logger }`.  
-`incident_clusters` is internal pipeline state — not written to `output.json`.  
-The full anomaly list (303 peaks on sample data) is always preserved in the output.
+**How it works (high level):**
 
-→ [Middleware details, thresholds, diagrams](docs/architecture.md#middlewares)
+1. Load and validate logs
+2. Summarize the window (metrics + service health)
+3. Flag abnormal values with fixed thresholds
+4. Group related spikes into incidents (internal step — not in the output file)
+5. Ask Groq for corrective recommendations, then merge duplicates
+6. Validate and write the final JSON report
 
----
+Metrics, anomalies, and correlation are **deterministic TypeScript**. Groq is used **only** for recommendations.
 
-## Groq
-
-- **Model:** `openai/gpt-oss-20b` with strict JSON schema (Zod → Groq → `safeParse`)
-- **Two passes:** draft calls per cluster / metric group / service status, then one synthesis call
-- **Synthesis:** at most **one recommendation per target**, ranked offline → degraded → metrics
-- **Resilience:** sequential calls with pause, independent 429 and 400 retry budgets, `failed_generation` recovery
-- **Prompts:** four scoped system prompts (metric, cluster, status, synthesis) — see [prompt design](docs/architecture.md#prompt-design)
-
-Typical sample output: ~3 recommendations instead of hundreds of near-duplicates.
-
----
-
-## Repo structure
-
-| Folder                            | Role                               |
-| --------------------------------- | ---------------------------------- |
-| `src/scripts/infraLogAnalyzer.ts` | CLI orchestrator                   |
-| `src/middlewares/*`               | one pipeline step per folder       |
-| `src/services/groq`               | reusable Groq client               |
-| `src/helpers/*`                   | shared utilities                   |
-| `src/types/`                      | Zod schemas + `PipelineContext`    |
-| `src/test/fixtures.ts`            | shared test helpers                |
-| `docs/architecture.md`            | detailed design notes              |
-| `data/`                           | input logs                         |
-| `report/`                         | generated output (gitignored)      |
+→ [Pipeline steps, middlewares, thresholds](docs/architecture.md#middlewares)  
+→ [Groq integration, prompts, resilience](docs/architecture.md#groq-integration)

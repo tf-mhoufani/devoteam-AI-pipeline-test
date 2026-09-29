@@ -2,10 +2,56 @@
 
 Detailed design notes for the Devoteam AI pipeline. For setup and commands, see the [README](../README.md).
 
+## Contents
+
+- [Technical choices](#technical-choices)
+- [Pipeline overview](#pipeline-overview)
+- [Middlewares](#middlewares)
+- [Groq integration](#groq-integration)
+- [Prompt design](#prompt-design)
+- [Repo structure](#repo-structure)
+- [Future directions](#future-directions)
+
+---
+
+## Technical choices
+
+Linear middleware flow instead of LangGraph: load → aggregate → detect → correlate → recommend → write. Testable steps with `pipe()`, strategy pattern for insights/anomalies, shared `PipelineContext`, injectable logger.
+
+
+| Choice                | Why                                                                              |
+| --------------------- | -------------------------------------------------------------------------------- |
+| **TypeScript 6**      | Typed pipeline, `#` aliases, `tsc --noEmit`, no JS build                         |
+| **Zod 4**             | Input/output validation, Groq JSON Schema, inferred types                        |
+| **tsx**               | Run CLI with `--env-file=.env`                                                   |
+| **OpenAI SDK**        | Groq entry point; custom 429/400 handling in `services/groq`                     |
+| **Vitest**            | ESM-native tests, Groq mocks, 85% coverage threshold on `src/` (`npm run check`) |
+| **ESLint + Prettier** | Lint + formatting                                                                |
+
+
+---
+
 ## Pipeline overview
 
 The pipeline builds a shared `PartialAnalysisReport` step by step. Each middleware reads the state, adds its fields, and passes it on. Every middleware uses the same signature: `(state, ctx)` with `ctx = { logs, logger }`.
 
+```
+data/rapport.json
+        │
+        ▼
+  loadJson (validate LogEntry[])
+        │
+        ▼
+  infraLogAnalyzer — pipe(PartialAnalysisReport)
+        │
+        ├─ aggregateInsights       (deterministic)
+        ├─ detectAnomalies         (deterministic)
+        ├─ correlateAnomalies      (deterministic)
+        └─ generateRecommendations (Groq)
+        │
+        ▼
+  writeJson + OutputSchema → report/output.json
+```
 
 | Step                      | Adds to state                                       |
 | ------------------------- | --------------------------------------------------- |
@@ -173,21 +219,19 @@ generateRecommendations ──► services/groq ──► Groq API
 
 ---
 
-## Technical choices
+## Repo structure
 
-Linear middleware flow instead of LangGraph: load → aggregate → detect → correlate → recommend → write. Testable steps with `pipe()`, strategy pattern for insights/anomalies, shared `PipelineContext`, injectable logger.
-
-
-| Choice                | Why                                                                              |
-| --------------------- | -------------------------------------------------------------------------------- |
-| **Node.js 20+**       | JSON CLI + HTTP calls                                                            |
-| **TypeScript 6**      | Typed pipeline, `#` aliases, `tsc --noEmit`, no JS build                         |
-| **Zod 4**             | Input/output validation, Groq JSON Schema, inferred types                        |
-| **tsx**               | Run CLI with `--env-file=.env`                                                   |
-| **OpenAI SDK**        | Groq entry point; custom 429/400 handling in `services/groq`                     |
-| **Vitest**            | ESM-native tests, Groq mocks, 85% coverage threshold on `src/` (`npm run check`) |
-| **ESLint + Prettier** | Lint + formatting                                                                |
-
+| Folder                            | Role                               |
+| --------------------------------- | ---------------------------------- |
+| `src/scripts/infraLogAnalyzer.ts` | CLI orchestrator                   |
+| `src/middlewares/*`               | one pipeline step per folder       |
+| `src/services/groq`               | reusable Groq client               |
+| `src/helpers/*`                   | shared utilities                   |
+| `src/types/`                      | Zod schemas + `PipelineContext`    |
+| `src/test/fixtures.ts`            | shared test helpers                |
+| `docs/architecture.md`            | detailed design notes              |
+| `data/`                           | input logs                         |
+| `report/`                         | generated output (gitignored)      |
 
 ---
 
