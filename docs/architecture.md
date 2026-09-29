@@ -6,14 +6,16 @@ Detailed design notes for the Devoteam AI pipeline. For setup and commands, see 
 
 The pipeline builds a shared `PartialAnalysisReport` step by step. Each middleware reads the state, adds its fields, and passes it on. Every middleware uses the same signature: `(state, ctx)` with `ctx = { logs, logger }`.
 
+
 | Step                      | Adds to state                                       |
 | ------------------------- | --------------------------------------------------- |
-| `loadJson`                | raw `LogEntry[]` (passed via `ctx`, not in state) |
+| `loadJson`                | raw `LogEntry[]` (passed via `ctx`, not in state)   |
 | `aggregateInsights`       | `insights`, `service_status_summary`                |
 | `detectAnomalies`         | `anomalies`                                         |
 | `correlateAnomalies`      | `incident_clusters` (internal — not in output JSON) |
 | `generateRecommendations` | `recommendations`                                   |
 | `writeJson`               | full `AnalysisReport` + `timestamp`                 |
+
 
 ---
 
@@ -45,14 +47,16 @@ state.insights + state.service_status_summary
 
 Scan each log line and keep only abnormal events. Fixed thresholds, not AI.
 
-| Metric      | Medium  | High    |
-| ----------- | ------- | ------- |
-| CPU         | ≥ 85%   | ≥ 95%   |
-| latency     | ≥ 250 ms| ≥ 350 ms|
-| error rate  | —       | ≥ 0.05  |
-| memory      | ≥ 85%   | ≥ 90%   |
-| disk        | ≥ 85%   | ≥ 90%   |
-| temperature | ≥ 80°C  | ≥ 85°C  |
+
+| Metric      | Medium   | High     |
+| ----------- | -------- | -------- |
+| CPU         | ≥ 85%    | ≥ 95%    |
+| latency     | ≥ 250 ms | ≥ 350 ms |
+| error rate  | —        | ≥ 0.05   |
+| memory      | ≥ 85%    | ≥ 90%    |
+| disk        | ≥ 85%    | ≥ 90%    |
+| temperature | ≥ 80°C   | ≥ 85°C   |
+
 
 New rules are one strategy in `ANOMALY_STRATEGIES` — no schema change needed.
 
@@ -67,10 +71,12 @@ Group anomalies into incident clusters so Groq sees related signals, not isolate
 
 **Why:** Without correlation, CPU + latency + error rate at the same timestamp look like three independent problems. Clusters turn them into one incident narrative (saturation, or latency causing errors). Detection stays exhaustive: `anomalies[]` remains complete in the final JSON; `incident_clusters` is internal state for Groq orchestration only.
 
-| Type               | Rule                                                         | Example                              |
-| ------------------ | ------------------------------------------------------------ | ------------------------------------ |
-| `co_occurrence`    | ≥ 2 metrics abnormal on the same timestamp                     | CPU + latency + error rate at 12:00  |
-| `temporal_cascade` | `latency_ms` spike then `error_rate` spike on the next log | Timeouts causing errors              |
+
+| Type               | Rule                                                       | Example                             |
+| ------------------ | ---------------------------------------------------------- | ----------------------------------- |
+| `co_occurrence`    | ≥ 2 metrics abnormal on the same timestamp                 | CPU + latency + error rate at 12:00 |
+| `temporal_cascade` | `latency_ms` spike then `error_rate` spike on the next log | Timeouts causing errors             |
+
 
 - **Does not:** remove anomalies from the list or call Groq directly
 
@@ -123,11 +129,13 @@ state.recommendations[]
 
 **Pass 1 — drafts** (each call isolated):
 
-| Step              | Input sent                                    | Goal                          |
-| ----------------- | --------------------------------------------- | ----------------------------- |
-| 1 call / cluster  | Correlated incident                           | 1–2 root-cause recos          |
-| 1 call / metric   | Remaining metric groups (non-clustered times) | 1–2 recos per spike type      |
-| 1 call for status | `degraded` / `offline` services               | 1 reco per service            |
+
+| Step              | Input sent                                    | Goal                     |
+| ----------------- | --------------------------------------------- | ------------------------ |
+| 1 call / cluster  | Correlated incident                           | 1–2 root-cause recos     |
+| 1 call / metric   | Remaining metric groups (non-clustered times) | 1–2 recos per spike type |
+| 1 call for status | `degraded` / `offline` services               | 1 reco per service       |
+
 
 Grouping by metric sends scale (`count: 49`) instead of 49 raw lines — fewer tokens and fewer duplicate recos.
 
@@ -137,12 +145,14 @@ Grouping by metric sends scale (`count: 49`) instead of 49 raw lines — fewer t
 
 Four dedicated system prompts (in `generateRecommendations.constants.ts`) + user payloads from `buildRecommendationPrompt.ts`:
 
-| Prompt           | Constant                      | Purpose                                              |
-| ---------------- | ----------------------------- | ---------------------------------------------------- |
-| Metric group     | `GROQ_SYSTEM_PROMPT`          | 1–2 recos per spike type, not per peak               |
-| Incident cluster | `GROQ_CLUSTER_SYSTEM_PROMPT`  | Root-cause fix for correlated patterns               |
-| Service status   | `GROQ_STATUS_SYSTEM_PROMPT`   | One reco per degraded/offline service                |
-| Synthesis        | `GROQ_SYNTHESIS_SYSTEM_PROMPT`| Merge only — one reco per target, no new actions     |
+
+| Prompt           | Constant                       | Purpose                                          |
+| ---------------- | ------------------------------ | ------------------------------------------------ |
+| Metric group     | `GROQ_SYSTEM_PROMPT`           | 1–2 recos per spike type, not per peak           |
+| Incident cluster | `GROQ_CLUSTER_SYSTEM_PROMPT`   | Root-cause fix for correlated patterns           |
+| Service status   | `GROQ_STATUS_SYSTEM_PROMPT`    | One reco per degraded/offline service            |
+| Synthesis        | `GROQ_SYNTHESIS_SYSTEM_PROMPT` | Merge only — one reco per target, no new actions |
+
 
 **Guardrails (all prompts):**
 
@@ -167,15 +177,17 @@ generateRecommendations ──► services/groq ──► Groq API
 
 Linear middleware flow instead of LangGraph: load → aggregate → detect → correlate → recommend → write. Testable steps with `pipe()`, strategy pattern for insights/anomalies, shared `PipelineContext`, injectable logger.
 
-| Choice                | Why                                                                                         |
-| --------------------- | ------------------------------------------------------------------------------------------- |
-| **Node.js 20+**       | JSON CLI + HTTP calls                                                                       |
-| **TypeScript 6**      | Typed pipeline, `#` aliases, `tsc --noEmit`, no JS build                                    |
-| **Zod 4**             | Input/output validation, Groq JSON Schema, inferred types                                  |
-| **tsx**               | Run CLI with `--env-file=.env`                                                              |
-| **OpenAI SDK**        | Groq entry point; custom 429/400 handling in `services/groq`                                |
-| **Vitest**            | ESM-native tests, Groq mocks, 85% coverage threshold on `src/` (`npm run check`)            |
-| **ESLint + Prettier** | Lint + formatting                                                                           |
+
+| Choice                | Why                                                                              |
+| --------------------- | -------------------------------------------------------------------------------- |
+| **Node.js 20+**       | JSON CLI + HTTP calls                                                            |
+| **TypeScript 6**      | Typed pipeline, `#` aliases, `tsc --noEmit`, no JS build                         |
+| **Zod 4**             | Input/output validation, Groq JSON Schema, inferred types                        |
+| **tsx**               | Run CLI with `--env-file=.env`                                                   |
+| **OpenAI SDK**        | Groq entry point; custom 429/400 handling in `services/groq`                     |
+| **Vitest**            | ESM-native tests, Groq mocks, 85% coverage threshold on `src/` (`npm run check`) |
+| **ESLint + Prettier** | Lint + formatting                                                                |
+
 
 ---
 
@@ -184,3 +196,5 @@ Linear middleware flow instead of LangGraph: load → aggregate → detect → c
 - **Detection** — more metrics from `LogEntry`, richer correlation, optional baseline-based rules
 - **Recommendations** — optional `CLOUD_PROVIDER` for vendor-specific wording; smarter Groq grouping
 - **Operations** — structured logging, Groq latency / 429 metrics, draft cache for local re-runs
+- **Performance** — today: full in-memory load, every spike in `anomalies[]`, sequential Groq. At scale: chunked/streaming input, windowed analysis, incremental metrics, anomaly summarization in the report
+
