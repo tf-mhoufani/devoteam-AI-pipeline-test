@@ -14,11 +14,11 @@ Metrics and anomalies are computed in deterministic TypeScript. Groq only sugges
 **Architecture** ([docs/architecture.md](docs/architecture.md))
 
 - [Technical choices](docs/architecture.md#technical-choices)
+- [Repo structure](docs/architecture.md#repo-structure)
 - [Pipeline overview](docs/architecture.md#pipeline-overview)
 - [Middleware details](docs/architecture.md#middlewares)
 - [Groq integration](docs/architecture.md#groq-integration)
 - [Prompt design](docs/architecture.md#prompt-design)
-- [Repo structure](docs/architecture.md#repo-structure)
 - [Future directions](docs/architecture.md#future-directions)
 
 ---

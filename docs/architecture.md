@@ -5,11 +5,11 @@ Detailed design notes for the Devoteam AI pipeline. For setup and commands, see 
 ## Contents
 
 - [Technical choices](#technical-choices)
+- [Repo structure](#repo-structure)
 - [Pipeline overview](#pipeline-overview)
 - [Middlewares](#middlewares)
 - [Groq integration](#groq-integration)
 - [Prompt design](#prompt-design)
-- [Repo structure](#repo-structure)
 - [Future directions](#future-directions)
 
 ---
@@ -28,6 +28,22 @@ Linear middleware flow instead of LangGraph: load → aggregate → detect → c
 | **Vitest**            | ESM-native tests, Groq mocks, 85% coverage threshold on `src/` (`npm run check`) |
 | **ESLint + Prettier** | Lint + formatting                                                                |
 
+
+---
+
+## Repo structure
+
+| Folder                            | Role                               |
+| --------------------------------- | ---------------------------------- |
+| `src/scripts/infraLogAnalyzer.ts` | CLI orchestrator                   |
+| `src/middlewares/*`               | one pipeline step per folder       |
+| `src/services/groq`               | reusable Groq client               |
+| `src/helpers/*`                   | shared utilities                   |
+| `src/types/`                      | Zod schemas + `PipelineContext`    |
+| `src/test/fixtures.ts`            | shared test helpers                |
+| `docs/architecture.md`            | detailed design notes              |
+| `data/`                           | input logs                         |
+| `report/`                         | generated output (gitignored)      |
 
 ---
 
@@ -216,22 +232,6 @@ generateRecommendations ──► services/groq ──► Groq API
 
 - **`src/services/groq`** — transport: client, pauses, retries, structured outputs
 - **`src/middlewares/generateRecommendations`** — business logic: grouping, prompts, synthesis
-
----
-
-## Repo structure
-
-| Folder                            | Role                               |
-| --------------------------------- | ---------------------------------- |
-| `src/scripts/infraLogAnalyzer.ts` | CLI orchestrator                   |
-| `src/middlewares/*`               | one pipeline step per folder       |
-| `src/services/groq`               | reusable Groq client               |
-| `src/helpers/*`                   | shared utilities                   |
-| `src/types/`                      | Zod schemas + `PipelineContext`    |
-| `src/test/fixtures.ts`            | shared test helpers                |
-| `docs/architecture.md`            | detailed design notes              |
-| `data/`                           | input logs                         |
-| `report/`                         | generated output (gitignored)      |
 
 ---
 
